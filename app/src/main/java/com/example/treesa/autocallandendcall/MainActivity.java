@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Message;
@@ -26,15 +27,11 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 
-import com.chad.library.adapter.base.BaseQuickAdapter;
 
-import java.lang.reflect.Array;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-    ArrayList<String> phones = new ArrayList<>();
     Handler handler = new Handler(){
         @Override
         public void handleMessage(Message msg) {
@@ -67,6 +64,8 @@ public class MainActivity extends AppCompatActivity {
         start = findViewById(R.id.btn_phone2);
         add = findViewById(R.id.add);
         recyclerView = findViewById(R.id.recycle_view);
+        Button period = findViewById(R.id.period);
+
 
         mPm = (PowerManager)getSystemService(Context.POWER_SERVICE);
         mWl = mPm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "myservice");
@@ -106,39 +105,66 @@ public class MainActivity extends AppCompatActivity {
                     });
                     builder.create().show();
                     break;
-                case R.id.delete:
+                case R.id.period:
+                    AlertDialog.Builder builder2 = new AlertDialog.Builder(MainActivity.this);
+                    LayoutInflater inflater2 = getLayoutInflater();
+                    View view = inflater2.inflate(R.layout.dialog_period,null);
+                    builder2.setView(view);
+                    builder2.setPositiveButton("确定", (dialog, which) -> {
+                        EditText input = view.findViewById(R.id.input);
+                        String inputNumber = input.getText().toString();
+                        int period2 = Integer.valueOf(inputNumber);
+                        if(period2>10 || period2<1){
+                            Toast.makeText(this, "超过范围", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        SharedPreferences sp = getSharedPreferences("auto_call", Context.MODE_PRIVATE);
+                        SharedPreferences.Editor edit = sp.edit();
+                        edit.putInt("period",Integer.valueOf(inputNumber));
+                        edit.commit();
+                        Toast.makeText(MainActivity.this, period2+"小时/次，周期修改后重启生效", Toast.LENGTH_LONG).show();
+                        dialog.dismiss();
+                    });
+                    builder2.create().show();
                     break;
                 case R.id.btn_phone2:
                     Toast.makeText(MainActivity.this,"开始工作",Toast.LENGTH_SHORT).show();
                     new Handler().postDelayed(() -> {
-
-                        new Clock(phones).start();
-
+                        new Clock(list).start();
                         AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
                         Intent intent = new Intent();
                         intent.setAction("action.CALL_EVERY_PHONE_NUMBER");
                         PendingIntent pendingIntent = PendingIntent.getBroadcast(MainActivity.this,
                                 100, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+                        // 读取sp中周期变量
+                        SharedPreferences sp = getSharedPreferences("auto_call", Context.MODE_PRIVATE);
+                        int auto_call = sp.getInt("auto_call", 2);
                         // rtc 从1970开始唤醒cpu
                         alarm.setRepeating(AlarmManager.RTC_WAKEUP,
-                                5000, 60*1000*60*2, pendingIntent);
+                                5000, 60*1000*60*auto_call, pendingIntent);
 
                         receiver = new AlarmBroadcastReceiver();
                         registerReceiver(receiver,new IntentFilter("action.CALL_EVERY_PHONE_NUMBER"));
                     },1000*5);
                     break;
+                default:
             }
         };
 
-        adapter.setOnItemChildClickListener(new BaseQuickAdapter.OnItemChildClickListener() {
-            @Override
-            public void onItemChildClick(BaseQuickAdapter adapter, View view, int position) {
-                int id = view.getId();
-                Toast.makeText(MainActivity.this,"删除 == id "+id,Toast.LENGTH_SHORT).show();
-            }
+        /**
+         * position对应集合中的数据
+         * 从集合中获取id，从数据库中删除
+         */
+        adapter.setOnItemChildClickListener((adapter, view, position) -> {
+            Phones phones = list.get(position);
+            phonesDao.delete(phones);
+            list.remove(position);
+            adapter.notifyDataSetChanged();
+            Toast.makeText(MainActivity.this,"删除成功",Toast.LENGTH_SHORT).show();
         });
         add.setOnClickListener(clickListener);
         start.setOnClickListener(clickListener);
+        period.setOnClickListener(clickListener);
 
     }
 
@@ -186,29 +212,27 @@ public class MainActivity extends AppCompatActivity {
         if (mWl.isHeld()) {
             mWl.release();
         }
-        if(receiver!=null)
-            unregisterReceiver(receiver);
     }
 
     class AlarmBroadcastReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             Log.e("AlarmBroadcastReceiver","onReceive 启动打电话线程 -==-=--=-=--=-");
-            new Clock(phones).start();
+            new Clock(list).start();
         }
     }
 
     class Clock extends Thread {
 
-        ArrayList<String> phones;
-        public Clock(ArrayList<String> phones){
+        List<Phones> phones;
+        public Clock(List<Phones> phones){
             this.phones = phones;
         }
         @Override
         public void run() {
-                for(String phone:phones){
+                for(Phones phone:phones){
                     Message obtain = Message.obtain();
-                    obtain.obj = phone;
+                    obtain.obj = phone.getNumber();
                     handler.sendMessage(obtain);
                     SystemClock.sleep(20*1000);
                 }
