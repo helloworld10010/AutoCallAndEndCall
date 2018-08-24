@@ -44,6 +44,8 @@ public class MainActivity extends AppCompatActivity {
     private View.OnClickListener clickListener;
     private Button add;
     private Button start;
+    private Button callingTime;
+    private Button period;
     private RecyclerView recyclerView;
     private PhonesAdapter adapter;
     private List<Phones> list;
@@ -64,7 +66,8 @@ public class MainActivity extends AppCompatActivity {
         start = findViewById(R.id.btn_phone2);
         add = findViewById(R.id.add);
         recyclerView = findViewById(R.id.recycle_view);
-        Button period = findViewById(R.id.period);
+        period = findViewById(R.id.period);
+        callingTime = findViewById(R.id.calling_time);
 
 
         mPm = (PowerManager)getSystemService(Context.POWER_SERVICE);
@@ -127,6 +130,28 @@ public class MainActivity extends AppCompatActivity {
                     });
                     builder2.create().show();
                     break;
+                case R.id.calling_time:
+                    AlertDialog.Builder builder3 = new AlertDialog.Builder(MainActivity.this);
+                    LayoutInflater inflater3 = getLayoutInflater();
+                    View view2 = inflater3.inflate(R.layout.dialog_callling_time,null);
+                    builder3.setView(view2);
+                    builder3.setPositiveButton("确定", (dialog, which) -> {
+                        EditText input = view2.findViewById(R.id.input);
+                        String inputNumber = input.getText().toString();
+                        int period2 = Integer.valueOf(inputNumber);
+                        if(period2>30 || period2<5){
+                            Toast.makeText(this, "超过范围", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        SharedPreferences sp = getSharedPreferences("auto_call", Context.MODE_PRIVATE);
+                        SharedPreferences.Editor edit = sp.edit();
+                        edit.putInt("calling_time",Integer.valueOf(inputNumber));
+                        edit.commit();
+                        Toast.makeText(MainActivity.this, period2+"秒/次，修改后重启生效", Toast.LENGTH_LONG).show();
+                        dialog.dismiss();
+                    });
+                    builder3.create().show();
+                    break;
                 case R.id.btn_phone2:
                     Toast.makeText(MainActivity.this,"开始工作",Toast.LENGTH_SHORT).show();
                     new Handler().postDelayed(() -> {
@@ -165,10 +190,13 @@ public class MainActivity extends AppCompatActivity {
         add.setOnClickListener(clickListener);
         start.setOnClickListener(clickListener);
         period.setOnClickListener(clickListener);
+        callingTime.setOnClickListener(clickListener);
 
     }
 
     public void callAndEndCall(String phone){
+        SharedPreferences sp = getSharedPreferences("auto_call", Context.MODE_PRIVATE);
+        int calling_time = sp.getInt("calling_time", 10);
         try {
             // 开始直接拨打电话
             Intent intent2 = new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + phone));
@@ -199,7 +227,7 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-            }, 10 * 1000);
+            }, calling_time * 1000);
         } catch (Exception e) {
             e.printStackTrace();
         }
