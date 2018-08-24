@@ -8,24 +8,32 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.telephony.TelephonyManager;
+import android.text.TextUtils;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Toast;
 
+import com.chad.library.adapter.base.BaseQuickAdapter;
+
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-    Button btn_phone2;
     ArrayList<String> phones = new ArrayList<>();
     Handler handler = new Handler(){
         @Override
@@ -36,45 +44,102 @@ public class MainActivity extends AppCompatActivity {
     AlarmBroadcastReceiver receiver;
     PowerManager.WakeLock mWl;
     PowerManager mPm;
+    private View.OnClickListener clickListener;
+    private Button add;
+    private Button start;
+    private RecyclerView recyclerView;
+    private PhonesAdapter adapter;
+    private List<Phones> list;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
         setContentView(R.layout.activity_main);
-        btn_phone2 = findViewById(R.id.btn_phone2);
 
-        phones.add("13235364220");
-        phones.add("13061195162");
-        phones.add("15650094105");
-        phones.add("17125048412");
+        // get the note DAO
+        DaoSession daoSession = ((CustomApp) getApplication()).getDaoSession();
+        PhonesDao phonesDao = daoSession.getPhonesDao();
+        list = phonesDao.queryBuilder()
+                .list();
 
-        btn_phone2.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Toast.makeText(MainActivity.this,"开始工作",Toast.LENGTH_SHORT).show();
-                new Handler().postDelayed(() -> {
+        start = findViewById(R.id.btn_phone2);
+        add = findViewById(R.id.add);
+        recyclerView = findViewById(R.id.recycle_view);
 
-                    new Clock(phones).start();
-
-                    AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-                    Intent intent = new Intent();
-                    intent.setAction("action.CALL_EVERY_PHONE_NUMBER");
-                    PendingIntent pendingIntent = PendingIntent.getBroadcast(MainActivity.this,
-                            100, intent, PendingIntent.FLAG_CANCEL_CURRENT);
-                    // rtc 从1970开始唤醒cpu
-                    alarm.setRepeating(AlarmManager.RTC_WAKEUP,
-                            5000, 60*1000*60*2, pendingIntent);
-
-                    receiver = new AlarmBroadcastReceiver();
-                    registerReceiver(receiver,new IntentFilter("action.CALL_EVERY_PHONE_NUMBER"));
-                },1000*5);
-            }
-        });
         mPm = (PowerManager)getSystemService(Context.POWER_SERVICE);
         mWl = mPm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "myservice");
         mWl.acquire(5000);
+
+        adapter = new PhonesAdapter(R.layout.item_recycleview, list);
+        recyclerView.setAdapter(adapter);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+
+        clickListener = (View v) -> {
+            switch (v.getId()){
+                case R.id.add:
+                    AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                    LayoutInflater inflater = getLayoutInflater();
+                    View inflate = inflater.inflate(R.layout.dialog_signin,null);
+                    builder.setView(inflate);
+                    builder.setPositiveButton("确定", (dialog, which) -> {
+                        EditText input = inflate.findViewById(R.id.input);
+                        String inputNumber = input.getText().toString();
+                        if(!TextUtils.isEmpty(inputNumber)){
+                            Phones phones = new Phones();
+                            phones.setNumber(inputNumber);
+                            phonesDao.insert(phones);
+
+                            List<Phones> newList = phonesDao.queryBuilder()
+                                    .list();
+                            for(Phones p:newList){
+                                if(!list.contains(p)){
+                                    list.add(p);
+                                }
+                            }
+                            adapter.notifyDataSetChanged();
+                        }
+
+                        Toast.makeText(MainActivity.this, "添加成功", Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
+                    });
+                    builder.create().show();
+                    break;
+                case R.id.delete:
+                    break;
+                case R.id.btn_phone2:
+                    Toast.makeText(MainActivity.this,"开始工作",Toast.LENGTH_SHORT).show();
+                    new Handler().postDelayed(() -> {
+
+                        new Clock(phones).start();
+
+                        AlarmManager alarm = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                        Intent intent = new Intent();
+                        intent.setAction("action.CALL_EVERY_PHONE_NUMBER");
+                        PendingIntent pendingIntent = PendingIntent.getBroadcast(MainActivity.this,
+                                100, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+                        // rtc 从1970开始唤醒cpu
+                        alarm.setRepeating(AlarmManager.RTC_WAKEUP,
+                                5000, 60*1000*60*2, pendingIntent);
+
+                        receiver = new AlarmBroadcastReceiver();
+                        registerReceiver(receiver,new IntentFilter("action.CALL_EVERY_PHONE_NUMBER"));
+                    },1000*5);
+                    break;
+            }
+        };
+
+        adapter.setOnItemChildClickListener(new BaseQuickAdapter.OnItemChildClickListener() {
+            @Override
+            public void onItemChildClick(BaseQuickAdapter adapter, View view, int position) {
+                int id = view.getId();
+                Toast.makeText(MainActivity.this,"删除 == id "+id,Toast.LENGTH_SHORT).show();
+            }
+        });
+        add.setOnClickListener(clickListener);
+        start.setOnClickListener(clickListener);
+
     }
 
     public void callAndEndCall(String phone){
